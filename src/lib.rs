@@ -1,41 +1,47 @@
 mod charbool;
+mod err;
+//#[cfg(test)]
+mod test;
 pub use charbool::CharBool;
-pub struct TErr {
-    line: usize,
-    cnum: usize,
-    index: usize,
-    exp: &'static str,
-    got: Option<char>,
-}
+pub use err::TErr;
 
 pub type TokenRes<'a, T> = Result<Option<Token<'a, T>>, TErr>;
 
+#[derive(Clone, Debug)]
 pub struct Token<'a, T> {
-    value: T,
-    s: &'a str,
-    start: usize,
-    end: usize,
+    pub value: T,
+    pub s: &'a str,
+    pub start: usize,
+    pub end: usize,
 }
-pub struct TokenChars<'a> {
+
+/// An InnerTokenizer is intended to be a child to your actual tokenizer, providing the string
+/// and indexing utility, so you can worry about consuming characters.
+/// Rather than have to places for storage it runs with a peek that can be viewed, and then called
+/// upon later.
+/// you can either call next_char or peek_char to get the next character with it's index
+pub struct InnerTokenizer<'a> {
     s: &'a str,
     line: usize,
+    col: usize,
     chars: std::str::CharIndices<'a>,
     start: usize,
     peek: Option<(usize, char)>,
 }
 
-impl<'a> TokenChars<'a> {
+impl<'a> InnerTokenizer<'a> {
     pub fn new(s: &'a str) -> Self {
         Self {
             s: s,
             line: 1, //starts at 1 because that seems to be how text editors think
+            col: 0,
             chars: s.char_indices(),
             start: 0,
             peek: None,
         }
     }
 
-    pub fn next_char(&mut self) -> Option<(usize, char)> {
+    pub fn next(&mut self) -> Option<(usize, char)> {
         match self.peek.take() {
             Some((n, c)) if c == '\n' => {
                 self.line += 1;
@@ -45,13 +51,23 @@ impl<'a> TokenChars<'a> {
             None => self.chars.next(),
         }
     }
-
-    pub fn peek_char(&mut self) -> Option<(usize, char)> {
-        let (ni, nc) = self.next_char()?;
+    pub fn peek(&mut self) -> Option<(usize, char)> {
+        let (ni, nc) = self.next()?;
         self.peek = Some((ni, nc));
         Some((ni, nc))
     }
+    pub fn peek_char(&mut self) -> Option<char> {
+        self.peek().map(|(_, c)| c)
+    }
+    pub fn peek_index(&mut self) -> usize {
+        match self.peek() {
+            None => self.s.len(),
+            Some((i, _)) => i,
+        }
+    }
 
+    /// Drop the current peek and make sure new lines and stuff are counted
+    /// This guarantees the following call to next (or peek) will be new
     pub fn unpeek(&mut self) {
         match self.peek {
             Some((_, c)) if c == 'n' => self.line += 1,
@@ -60,19 +76,14 @@ impl<'a> TokenChars<'a> {
         self.peek = None;
     }
 
-    pub fn peek_index(&mut self) -> usize {
-        match self.peek_char() {
-            None => self.s.len(),
-            Some((i, _)) => i,
+    pub fn token_res<T>(&mut self, tt: T, unpeek: bool) -> TokenRes<'a, T> {
+        if unpeek {
+            self.unpeek();
         }
-    }
-
-    pub fn make_token_res<T>(&mut self, tt: T) -> TokenRes<'a, T> {
         Ok(Some(self.make_token(tt)))
     }
 
     pub fn make_token<T>(&mut self, value: T) -> Token<'a, T> {
-        self.unpeek();
         let start = self.start;
         let end = self.peek_index();
         self.start = end;
@@ -87,48 +98,85 @@ impl<'a> TokenChars<'a> {
     pub fn white_space(&mut self) {
         loop {
             match self.peek_char() {
-                Some((_, c)) if c.is_whitespace() => {
-                    self.peek = None;
-                }
+                Some(c) if c.is_whitespace() => self.unpeek(),
                 _ => return,
             }
         }
     }
 
-
-    fn expected<T>(&mut self, s: &str) -> TokenRes<'a, T> {
-        let (index,cnum )match self.peek_ne
-        TErr{
-            line: self.num,
-            index: 
-            exp: &'static str,
-            got: Option<char>,
-        }
+    fn expected<T>(&mut self, s: String) -> TokenRes<'a, T> {
+        let (index, got) = match self.peek() {
+            Some((n, c)) => (n, Some(c)),
+            None => (self.s.len(), None),
+        };
+        Err(TErr {
+            line: self.line,
+            col: self.col,
+            index,
+            exp: s,
+            got,
+        })
     }
 
-    pub fn require<T, C: CharBool>(&mut self, c: C, t: T) -> TokenRes<'a, T> {
+    /// When an item must be followed by a specific character to give a fixed result
+    pub fn follow<T, C: CharBool>(&mut self, c: C, t: T) -> TokenRes<'a, T> {
         self.unpeek(); //current peek
-        match self.next_char() {
-            Some((_, r)) if c.cb(r) => self.make_token_res(t),
+        match self.next() {
+            Some((_, r)) if c.cb(r) => self.token_res(t, true),
             _ => self.expected(c.expects()),
         }
     }
 
+    /// When an item must be followed by a set of options which could produce different results
+    /// ```ignore
+    /// // after an equals
+    /// tok.follow_fn(|c|match c {
+    ///     '>'=>Ok(MyToken::Arrow),
+    ///     '='=>Ok(MyToken::EqEq),
+    ///     _=>Err("Equals Needs a GT or another Equals"),
+    /// })
+    /// ```
+    pub fn follow_fn<T, F: Fn(char) -> Result<T, String>>(&mut self, f: F) -> TokenRes<'a, T> {
+        self.unpeek();
+        match self.next() {
+            Some((_, r)) => match f(r) {
+                Ok(t) => self.token_res(t, true),
+                Err(e) => self.expected(e),
+            },
+            None => self.expected("Not EOI".to_string()),
+        }
+    }
+
+    /// When an item may be followed by a specific character
+    pub fn follow_fn_or<T, F: Fn(char) -> Option<T>>(&mut self, f: F, def: T) -> TokenRes<'a, T> {
+        self.unpeek();
+        match self.next() {
+            Some((_, r)) => match f(r) {
+                Some(t) => self.token_res(t, true),
+                None => self.token_res(def, false),
+            },
+            None => self.token_res(def, false),
+        }
+    }
+
+    pub fn take_while<T, CB: CharBool, F: Fn(&str) -> T>(
+        &mut self,
+        cb: CB,
+        f: F,
+    ) -> TokenRes<'a, T> {
+        let start = self.peek_index();
+        while let Some((end, c)) = self.peek() {
+            if !cb.cb(c) {
+                let tk = f(&self.s[start..end]);
+                return self.token_res(tk, false);
+            }
+            self.unpeek();
+        }
+        let tk = f(&self.s[start..]);
+        return self.token_res(tk, false);
+    }
+
     /*pub fn next(&mut self) -> TokenRes<'a> {
-    let follow = |s: &mut Self, c: char, tt: TokenType<'a>| {
-        s.peek = None;
-        match s.next_char() {
-            Some((_, r)) if r == c => s.make_token_wrap(tt, false),
-            _ => e_str("Expected second Dot"),
-        }
-    };
-    let follow_def = |s: &mut Self, c: char, tt: TokenType<'a>, def: TokenType<'a>| {
-        s.peek = None;
-        match s.peek_char() {
-            Some((_, r)) if r == c => s.make_token_wrap(tt, true),
-            _ => s.make_token_wrap(def, false),
-        }
-    };
     self.white_space();
     self.start = self.peek_index();
     let pc = match self.peek_char() {
