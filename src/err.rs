@@ -1,10 +1,9 @@
+use crate::inner_token::Pos;
 use std::fmt::{self, Display};
 
 #[derive(Clone, Debug)]
 pub struct TErr {
-    pub line: usize,
-    pub col: usize,
-    pub index: usize,
+    pub pos: Pos,
     pub exp: String,
     pub got: Option<char>,
 }
@@ -19,7 +18,7 @@ impl Display for TErr {
         write!(
             f,
             "Expected '{}'  but got {} at ({},{})",
-            self.exp, got, self.line, self.col
+            self.exp, got, self.pos.line, self.pos.col
         )
     }
 }
