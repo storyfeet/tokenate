@@ -44,9 +44,28 @@ fn test_thing_happens() {
         tt.next().unwrap().unwrap().value,
         TKind::Ident("a".to_string())
     );
-    assert_eq!(tt.next().unwrap().unwrap().value, TKind::GreaterEqual,);
+    let nx = tt.next().unwrap().unwrap();
+    assert_eq!(nx.value, TKind::GreaterEqual,);
+    assert_eq!(nx.start, Pos::at(2, 1, 3));
+    assert_eq!(nx.end, Pos::at(4, 1, 5));
     assert_eq!(
         tt.next().unwrap().unwrap().value,
         TKind::Num("54".to_string())
     );
+}
+
+#[test]
+fn test_new_lines_positions() {
+    let s = "hit\nbet dog";
+    let mut tt = TestTok::new(s);
+    //hit
+    let nx = tt.next().unwrap().unwrap();
+    assert_eq!(nx.start, Pos::at(0, 1, 1));
+    assert_eq!(nx.end, Pos::at(3, 2, 0)); //newline starts at \n
+    let nx = tt.next().unwrap().unwrap();
+    assert_eq!(nx.start, Pos::at(4, 2, 1));
+    assert_eq!(nx.end, Pos::at(7, 2, 4));
+    let nx = tt.next().unwrap().unwrap();
+    assert_eq!(nx.start, Pos::at(8, 2, 5));
+    assert_eq!(nx.end, Pos::at(11, 2, 8));
 }

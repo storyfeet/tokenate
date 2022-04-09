@@ -4,7 +4,7 @@ use crate::err::TErr;
 
 pub type TokenRes<'a, T> = Result<Option<Token<'a, T>>, TErr>;
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub struct Pos {
     pub i: usize,
     pub line: usize,
@@ -12,12 +12,11 @@ pub struct Pos {
 }
 
 impl Pos {
-    fn new() -> Self {
-        Self {
-            i: 0,
-            line: 1,
-            col: 0,
-        }
+    pub fn new() -> Self {
+        Self::at(0, 1, 0)
+    }
+    pub fn at(i: usize, line: usize, col: usize) -> Self {
+        Self { i, line, col }
     }
     fn step(&mut self, c: char, i: usize) {
         self.i = i;
@@ -30,7 +29,9 @@ impl Pos {
                 self.col += 1;
             }
         }
+        println!("STEP: {},{} => {:?}", c, i, self);
     }
+
     fn stepped(mut self, c: char, i: usize) -> Self {
         self.step(c, i);
         self
@@ -72,15 +73,23 @@ impl<'a> InnerTokenizer<'a> {
                 self.pos.step(c, n);
                 Some((n, c))
             }
-            None => self.chars.next(),
+            None => {
+                let (n, c) = self.chars.next()?;
+                println!("NONE NEXT Step '{}',{}", c, n);
+                self.pos.step(c, n);
+                Some((n, c))
+            }
         }
     }
 
     ///Peek at the next char and index without moving forward
     pub fn peek(&mut self) -> Option<(usize, char)> {
-        let (ni, nc) = self.next()?;
-        self.peek = Some((ni, nc));
-        Some((ni, nc))
+        match &self.peek {
+            Some((pi, pc)) => return Some((*pi, *pc)),
+            None => {}
+        }
+        self.peek = self.chars.next();
+        self.peek.clone()
     }
     ///Peek, but you don't care about the index
     pub fn peek_char(&mut self) -> Option<char> {
@@ -104,7 +113,7 @@ impl<'a> InnerTokenizer<'a> {
     ///Call before creating a token, marks the start before reading it
     ///(token_res calls this ready for the next token, but it is safe to do again)
     pub fn start_token(&mut self) {
-        self.token_start = self.pos;
+        self.token_start = self.peek_pos();
     }
 
     /// Drop the current peek and make sure new lines and stuff are counted
@@ -129,6 +138,7 @@ impl<'a> InnerTokenizer<'a> {
     pub fn make_token<T>(&mut self, value: T) -> Token<'a, T> {
         let start = self.token_start;
         let end = self.peek_pos();
+        println!("Token Made {:?}", end);
         self.token_start = end;
         Token {
             start,
