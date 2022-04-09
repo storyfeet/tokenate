@@ -23,7 +23,7 @@ impl<'a> TestTok<'a> {
     }
     pub fn next(&mut self) -> TokenRes<'a, TKind> {
         self.tk.white_space();
-        self.tk.start = self.tk.peek_index();
+        self.tk.start_token();
         match self.tk.peek_char() {
             Some(c) if num_digit(c) => self.tk.take_while(num_digit, |s| TKind::Num(s.to_string())),
             Some('>') => self.tk.follow('=', TKind::GreaterEqual),
