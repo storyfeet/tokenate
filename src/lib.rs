@@ -1,6 +1,6 @@
 mod charbool;
 mod err;
-//#[cfg(test)]
+#[cfg(test)]
 mod test;
 pub use charbool::CharBool;
 pub use err::TErr;
@@ -24,7 +24,7 @@ pub struct Token<'a, T> {
 /// The Token::value is generic allowing you to choose define how tokens for your language look.
 ///
 /// ```rust
-/// use tokenize::*;
+/// use tokenate::*;
 ///
 /// #[derive(Clone, Debug, PartialEq)]
 /// pub enum TKind {
