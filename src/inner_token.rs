@@ -29,7 +29,7 @@ impl Pos {
                 self.col += 1;
             }
         }
-        println!("STEP: {},{} => {:?}", c, i, self);
+        //println!("STEP: {},{} => {:?}", c, i, self);
     }
 
     fn stepped(mut self, c: char, i: usize) -> Self {
@@ -75,7 +75,7 @@ impl<'a> InnerTokenizer<'a> {
             }
             None => {
                 let (n, c) = self.chars.next()?;
-                println!("NONE NEXT Step '{}',{}", c, n);
+                //println!("NONE NEXT Step '{}',{}", c, n);
                 self.pos.step(c, n);
                 Some((n, c))
             }
@@ -138,7 +138,7 @@ impl<'a> InnerTokenizer<'a> {
     pub fn make_token<T>(&mut self, value: T) -> Token<'a, T> {
         let start = self.token_start;
         let end = self.peek_pos();
-        println!("Token Made {:?}", end);
+        // println!("Token Made {:?}", end);
         self.token_start = end;
         Token {
             start,
