@@ -5,13 +5,13 @@ use std::fmt::{self, Display};
 pub struct TErr {
     pub pos: Pos,
     pub exp: String,
-    pub got: Option<char>,
+    pub got: Option<String>,
 }
 
 impl std::error::Error for TErr {}
 impl Display for TErr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let got = match self.got {
+        let got = match &self.got {
             Some(c) => c.to_string(),
             None => "EOI".to_string(),
         };

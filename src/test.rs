@@ -22,14 +22,16 @@ impl<'a> TestTok<'a> {
         }
     }
     pub fn next(&mut self) -> TokenRes<'a, TKind> {
-        self.tk.white_space();
+        self.tk.skip(char::is_whitespace);
         self.tk.start_token();
         match self.tk.peek_char() {
-            Some(c) if num_digit(c) => self.tk.take_while(num_digit, |s| TKind::Num(s.to_string())),
+            Some(c) if num_digit(c) => self
+                .tk
+                .take_while(num_digit, |s| Ok(TKind::Num(s.to_string()))),
             Some('>') => self.tk.follow('=', TKind::GreaterEqual),
             Some(c) if char::is_alphabetic(c) => self
                 .tk
-                .take_while(char::is_alphabetic, |s| TKind::Ident(s.to_string())),
+                .take_while(char::is_alphabetic, |s| Ok(TKind::Ident(s.to_string()))),
 
             _ => self.tk.expected("A legal token".to_string()),
         }

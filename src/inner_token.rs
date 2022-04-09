@@ -148,10 +148,10 @@ impl<'a> InnerTokenizer<'a> {
         }
     }
 
-    pub fn white_space(&mut self) {
+    pub fn skip<CB: CharBool>(&mut self, cb: CB) {
         loop {
             match self.peek_char() {
-                Some(c) if c.is_whitespace() => self.unpeek(),
+                Some(c) if cb.cb(c) => self.unpeek(),
                 _ => return,
             }
         }
@@ -161,7 +161,15 @@ impl<'a> InnerTokenizer<'a> {
         Err(TErr {
             pos: self.peek_pos(),
             exp: s,
-            got: self.peek_char(),
+            got: self.peek_char().map(String::from),
+        })
+    }
+
+    pub fn expected_got<T>(&mut self, exp: String, got: String) -> TokenRes<'a, T> {
+        Err(TErr {
+            pos: self.token_start,
+            exp,
+            got: Some(got),
         })
     }
 
@@ -174,6 +182,13 @@ impl<'a> InnerTokenizer<'a> {
         }
     }
 
+    pub fn follow_or<T, C: CharBool>(&mut self, c: C, t: T, def: T) -> TokenRes<'a, T> {
+        self.unpeek(); //current peek
+        match self.next() {
+            Some((_, r)) if c.cb(r) => self.token_res(t, true),
+            _ => self.token_res(def, false),
+        }
+    }
     /// When an item must be followed by a set of options which could produce different results
     /// ```ignore
     /// // after an equals
@@ -206,20 +221,26 @@ impl<'a> InnerTokenizer<'a> {
         }
     }
 
-    pub fn take_while<T, CB: CharBool, F: Fn(&str) -> T>(
+    pub fn take_while<T, CB: CharBool, F: Fn(&str) -> Result<T, String>>(
         &mut self,
         cb: CB,
         f: F,
     ) -> TokenRes<'a, T> {
+        let fin = |itk: &mut Self, fin_s| {
+            let tk = match f(fin_s) {
+                Ok(t) => t,
+                Err(s) => return itk.expected_got(s, fin_s.to_string()),
+            };
+            itk.token_res(tk, false)
+        };
+
         let start = self.peek_index();
         while let Some((end, c)) = self.peek() {
             if !cb.cb(c) {
-                let tk = f(&self.s[start..end]);
-                return self.token_res(tk, false);
+                return fin(self, &self.s[start..end]);
             }
             self.unpeek();
         }
-        let tk = f(&self.s[start..]);
-        return self.token_res(tk, false);
+        fin(self, &self.s[start..])
     }
 }
