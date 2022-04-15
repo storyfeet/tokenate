@@ -173,6 +173,13 @@ impl<'a> InnerTokenizer<'a> {
         })
     }
 
+    pub fn consume_as<T, C: CharBool>(&mut self, c: C, t: T) -> TokenRes<'a, T> {
+        match self.next() {
+            Some((_, r)) if c.cb(r) => self.token_res(t, true),
+            _ => self.expected(c.expects()),
+        }
+    }
+
     /// When an item must be followed by a specific character to give a fixed result
     pub fn follow<T, C: CharBool>(&mut self, c: C, t: T) -> TokenRes<'a, T> {
         self.unpeek(); //current peek
